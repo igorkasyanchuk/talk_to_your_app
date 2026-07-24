@@ -192,7 +192,10 @@ module TalkToYourApp
         end
         required = arguments.select { |_, o| o[:required] }.keys.map(&:to_s)
         schema = { properties: properties }
-        # Draft-04 (the SDK's metaschema) rejects an empty `required` array.
+        # Omitted rather than emitted empty: an empty `required` array carries no
+        # meaning, and older JSON Schema drafts reject it outright. The SDK
+        # defaults the root `type` to "object" and validates against JSON Schema
+        # 2020-12, so nothing else needs adding here.
         schema[:required] = required unless required.empty?
         schema
       end

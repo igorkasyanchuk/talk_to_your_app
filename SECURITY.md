@@ -45,12 +45,25 @@ API key can use every enabled plugin unless you scope it. Before production:
    `:flipper` writes, `:rake`, and `:cache` as sensitive; scope with `authorize`.
 8. **Audit sinks** — full SQL (and tool params) may appear in logs; filter or
    retain accordingly.
+9. **Rate-limit the endpoint** — the gem does not throttle or lock out repeated
+   failures. Put a limiter (e.g. Rack::Attack) in front of `config.mount_at` to
+   bound both credential guessing and expensive tool calls.
+10. **Alert on rejected requests** — every `401` emits a `WARN` line and a
+    `talk_to_your_app.auth_failure` event (`reason`, `scheme`, `ip`; never any
+    credential material). A burst from one source is the signal that credentials
+    are being guessed.
+11. **Trust the principal, not the IP** — the logged IP comes from
+    `Rack::Request#ip`, which honours `X-Forwarded-For`. It is accurate behind a
+    proxy you control and forgeable when the endpoint is directly exposed.
 
 ## Threat model (summary)
 
 - **In scope for the gem:** fail-closed boot, request authentication, optional
   per-tool authorization, Host/Origin DNS-rebinding controls (via the MCP SDK),
-  audit logging, and refusing to expose plugins that are not explicitly enabled.
-- **Out of scope / operator-owned:** network exposure, TLS termination, database
-  grants, Redis/job payload sensitivity, LLM prompt injection against data the
-  agent is allowed to read, and custom tools you author.
+  audit logging of both successful calls and rejected requests, and refusing to
+  expose plugins that are not explicitly enabled.
+- **Out of scope / operator-owned:** network exposure, TLS termination, rate
+  limiting and lockout, database grants, resource exhaustion from expensive
+  queries (`max_rows` bounds the response, not memory), Redis/job payload
+  sensitivity, LLM prompt injection against data the agent is allowed to read,
+  and custom tools you author.

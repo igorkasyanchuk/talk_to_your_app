@@ -6,6 +6,10 @@
 
 > ▶️ Click for the full-quality video — setup, live `db.query`, and read-only enforcement.
 
+![Asking Claude Code a question about production data](docs/quick.png)
+
+> A plain-English question, answered from the live database: the agent writes the read-only `SELECT` itself, calls `db.query`, and reports the number. The approval prompt in the middle is the **MCP client's** (here Claude Code) — independent of the gem's own `config.authorize` and read-only DB role, which apply whether or not a client asks.
+
 It's a thin, Rails-native layer over the official [MCP Ruby SDK](https://github.com/modelcontextprotocol/ruby-sdk): the SDK handles the wire protocol; this gem adds everything Rails — your replicas, your jobs backend, your feature flags — plus the guardrails that make pointing an agent at your app something you can actually ship.
 
 **What you get**
@@ -13,7 +17,7 @@ It's a thin, Rails-native layer over the official [MCP Ruby SDK](https://github.
 - 🔌 **A Streamable HTTP MCP endpoint in two lines** — `mount TalkToYourApp.rack_app`, and you're live.
 - 🔒 **Fail-closed by design** — API-key or HTTP Basic auth required, optional per-tool authorization, and an explicitly wired database connection the app *refuses to boot without* (read-only `:reading` role by default). Misconfiguration fails at deploy, never on the first request.
 - 🧰 **Batteries-included plugins** — `db` (read-only SQL + schema introspection), `sidekiq` and `solid_queue` (background-job metrics), `flipper` (feature flags), `rake` (allow-listed tasks), `cache` (clear the Rails cache), and `custom_tools` (your own tools, with a generator).
-- 📝 **Every call audit-logged** — principal, IP, params, outcome, duration. Subscribe to persist your own trail.
+- 📝 **Every call audit-logged** — principal, IP, params, outcome, duration, plus a line for every *rejected* request. Subscribe to persist your own trail.
 - ✍️ **A Ruby DSL + generators** for writing first-class tools of your own in a few lines.
 
 Everything is **off by default and opt-in per plugin** — an agent can only touch what you explicitly turn on.
@@ -188,6 +192,8 @@ config.plugin :db, connection: :readonly
 ```
 
 - **`db.query`** — `sql` (required), `format` (`json` | `text` | `html`, default `json`). Runs inside a transaction with a per-query statement timeout (default 30s, override with `statement_timeout:` on the connection). The timeout is enforced on PostgreSQL (`statement_timeout`) and MySQL (`max_execution_time`); SQLite has no per-statement timeout. **On a `:reading` connection (the default) writes are rejected by the read-only DB role** — the gem does not parse SQL (see [Read-only is enforced by the database](#read-only-is-enforced-by-the-database)). Results are capped at **2000 rows by default** — raise or lower it with `config.plugin :db, connection: :readonly, max_rows: 5000`, or remove the cap with `max_rows: nil` (also accepts `false` or `:unlimited`); when a query exceeds the cap the response is truncated and flagged (`"truncated": true, "max_rows": N`). **Invalid SQL** comes back as a tool error (`isError`) carrying the database's message — it never crashes the request or leaks a stack trace.
+
+> ⚠️ **`max_rows` bounds the response, not memory.** The full result set is fetched before truncation, so `SELECT * FROM a_very_large_table` can exhaust the web process well inside the statement timeout. Keep an explicit `LIMIT` in the queries you expect, lower `statement_timeout:` on the connection, and constrain the connection at the database (PostgreSQL: a low `work_mem` and a per-role `statement_timeout`).
 - **`db.tables`** — lists the table names in the database.
 - **`db.schema`** — `table` (required): the table's columns, primary key, indexes, and foreign keys.
 
@@ -371,7 +377,7 @@ Then `config.plugin :cache, connection: false` (every plugin must declare `conne
 
 ## Custom audit logging
 
-Every tool invocation produces one audit record. There are two ways to consume it:
+Every tool invocation produces one audit record, and every **rejected** request produces one too. There are two ways to consume them:
 
 **1. Swap the logger.** `config.logger` accepts any object with a `Logger` interface; the gem writes one line per call to it at `config.log_level`.
 
@@ -397,6 +403,33 @@ end
 ```
 
 The client IP comes from the request; the principal is the authenticated identity (so per-user tokens give you per-user attribution). Sensitive arguments marked `redact: true` are already masked in the payload. Put the subscriber in an initializer. See `test/dummy` for a working `Activity`-table example surfaced on its home page.
+
+> ⚠️ **The IP is only as trustworthy as your proxy.** It comes from `Rack::Request#ip`, which honours `X-Forwarded-For`. Behind a proxy you control, it's the real client. Directly exposed, a caller can forge it — treat the principal, not the IP, as the identity.
+
+### Failed authentication
+
+Rejected requests are logged too — an unlogged `401` makes credential guessing and endpoint scanning invisible. Each rejection emits **one `WARN` line** (the level is fixed, not `config.log_level`) and a `talk_to_your_app.auth_failure` event:
+
+```
+talk_to_your_app ts=2026-07-24T21:30:00.561Z event=auth_failure reason=invalid_credentials scheme=bearer ip=203.0.113.4
+```
+
+| Field | Values |
+| --- | --- |
+| `reason` | `missing_credentials` (no `Authorization` header) · `unsupported_scheme` · `invalid_credentials` (wrong token, or your `basic_auth` callable returned false) · `validator_error` (your callable raised — `error_class` is included) |
+| `scheme` | `bearer`, `basic`, `other`, or absent. Never the client's raw value: an unknown scheme is reported as `other` so a crafted header can't forge log fields. |
+| `ip` | Client IP, same caveat as above. |
+
+**No credential material is ever logged** — not the presented token, not the configured key, not the Basic password. Alert on a burst of `event=auth_failure` from one IP:
+
+```ruby
+ActiveSupport::Notifications.subscribe("talk_to_your_app.auth_failure") do |*args|
+  e = ActiveSupport::Notifications::Event.new(*args).payload
+  SecurityAlert.record(reason: e[:reason], ip: e[:ip], scheme: e[:scheme])
+end
+```
+
+The gem does **not** rate-limit or lock out repeated failures — put a throttle (e.g. [Rack::Attack](https://github.com/rack/rack-attack)) in front of `config.mount_at`.
 
 ## Connecting an MCP client
 
@@ -463,7 +496,8 @@ For a local end-to-end walkthrough (run the bundled dummy app, connect a client,
 - **Fail-closed.** Missing required config (auth, a required connection, a missing adapter gem) raises at boot, not at the first request. Without `config.authorize`, every authenticated principal can call every enabled tool.
 - **Per-plugin database roles.** Tools run on the connection their plugin wires, switched via Rails' `connected_to`. The DB plugin defaults to a `:reading` connection (Rails `prevent_writes` + your DB grants). Wiring a `:writing` connection is an explicit opt-in that lets `db.query` execute writes — the **database role / replica is the real write boundary**, not SQL parsing in the gem. See [Read-only is enforced by the database](#read-only-is-enforced-by-the-database).
 - **One audit line per invocation** through `Rails.logger`: timestamp, principal, plugin, tool, params, outcome, duration. Mark sensitive arguments `redact: true`. Full SQL is logged as submitted.
-- **What the gem does NOT do:** no "execute arbitrary Ruby" tool; no OAuth/JWT (static API keys and HTTP Basic only); no stdio transport; no web admin UI; no built-in rate limits. Network exposure, TLS, and DB grants are operator-owned — see [SECURITY.md](SECURITY.md).
+- **One `WARN` line per rejected request**, with the reason, scheme, and IP — never any credential material. See [Failed authentication](#failed-authentication).
+- **What the gem does NOT do:** no "execute arbitrary Ruby" tool; no OAuth/JWT (static API keys and HTTP Basic only); no stdio transport; no web admin UI; **no rate limiting or lockout** — put a throttle in front of the endpoint. Network exposure, TLS, and DB grants are operator-owned — see [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 

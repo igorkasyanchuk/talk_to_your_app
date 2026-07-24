@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# `active_support` itself, not just the sub-file: CurrentAttributes references
+# ActiveSupport::CodeGenerator at class-definition time, and the sub-require does
+# not pull it in. Without this, `require "talk_to_your_app"` raises NameError
+# anywhere ActiveSupport has not already been fully loaded — every Rails boot
+# hides it, a plain script or a non-Rails Rack process does not.
+require "active_support"
 require "active_support/current_attributes"
 
 module TalkToYourApp

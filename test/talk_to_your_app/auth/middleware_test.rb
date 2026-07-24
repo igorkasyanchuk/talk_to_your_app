@@ -2,6 +2,7 @@
 
 require "test_helper"
 require "base64"
+require "support/array_logger"
 
 class TalkToYourApp::Auth::MiddlewareTest < TalkToYourApp::TestCase
   def downstream
@@ -19,6 +20,17 @@ class TalkToYourApp::Auth::MiddlewareTest < TalkToYourApp::TestCase
 
   def env_for(headers = {})
     { "REQUEST_METHOD" => "POST", "PATH_INFO" => "/mcp" }.merge(headers)
+  end
+
+  # Captures the audit logger so the auth-failure lines can be asserted on.
+  def capturing_logger
+    logger = TalkToYourApp::ArrayLogger.new
+    TalkToYourApp.configure { |c| c.logger = logger }
+    logger
+  end
+
+  def auth_failure_line(logger)
+    logger.messages_at("WARN").find { |line| line.include?("event=auth_failure") }
   end
 
   def test_missing_authorization_returns_401
@@ -121,6 +133,81 @@ class TalkToYourApp::Auth::MiddlewareTest < TalkToYourApp::TestCase
     status, = middleware.call(env_for("HTTP_AUTHORIZATION" => "Basic #{creds}"))
     assert_equal 200, status
     assert_equal ["alice", "pa:ss:word"], seen
+  end
+
+  # --- Auth-failure logging -------------------------------------------------
+  # A 401 that leaves no trace makes credential guessing and endpoint scanning
+  # undetectable, so every rejection must produce exactly one WARN line naming
+  # the reason and the client IP.
+
+  def test_missing_credentials_are_logged_with_reason_and_ip
+    logger = capturing_logger
+    TalkToYourApp.configure { |c| c.api_keys = { "k" => "sekret" } }
+    middleware.call(env_for("REMOTE_ADDR" => "203.0.113.4"))
+
+    line = auth_failure_line(logger)
+    refute_nil line, "a rejected request must emit an auth_failure line"
+    assert_match(/reason=missing_credentials/, line)
+    assert_match(/ip=203\.0\.113\.4/, line)
+  end
+
+  def test_wrong_bearer_is_logged_without_the_presented_token
+    logger = capturing_logger
+    TalkToYourApp.configure { |c| c.api_keys = { "claude-desktop" => "sk-good" } }
+    middleware.call(env_for("HTTP_AUTHORIZATION" => "Bearer sk-wrong"))
+
+    line = auth_failure_line(logger)
+    assert_match(/reason=invalid_credentials/, line)
+    assert_match(/scheme=bearer/, line)
+    refute_match(/sk-wrong/, line, "the presented credential must never be logged")
+    refute_match(/sk-good/, line, "the configured key must never be logged")
+  end
+
+  # The scheme comes from a client-controlled header, so an unknown one is
+  # reported as "other" rather than interpolated into the log line verbatim.
+  def test_unsupported_scheme_is_logged_without_echoing_the_client_value
+    logger = capturing_logger
+    TalkToYourApp.configure { |c| c.api_keys = { "k" => "sk-good" } }
+    middleware.call(env_for("HTTP_AUTHORIZATION" => "Token\nevent=auth_success"))
+
+    line = auth_failure_line(logger)
+    assert_match(/reason=unsupported_scheme/, line)
+    assert_match(/scheme=other/, line)
+    refute_match(/auth_success/, line, "a client value must not be able to forge log fields")
+  end
+
+  def test_raising_validator_is_logged_as_validator_error
+    logger = capturing_logger
+    TalkToYourApp.configure { |c| c.basic_auth { |_u, _p| raise "db down" } }
+    creds = Base64.strict_encode64("alice:secret")
+    middleware.call(env_for("HTTP_AUTHORIZATION" => "Basic #{creds}"))
+
+    line = auth_failure_line(logger)
+    assert_match(/reason=validator_error/, line)
+    assert_match(/error_class=RuntimeError/, line)
+  end
+
+  def test_authenticated_request_logs_no_auth_failure
+    logger = capturing_logger
+    TalkToYourApp.configure { |c| c.api_keys = { "claude-desktop" => "sk-good" } }
+    middleware.call(env_for("HTTP_AUTHORIZATION" => "Bearer sk-good"))
+
+    assert_nil auth_failure_line(logger)
+  end
+
+  def test_auth_failure_emits_a_structured_event
+    payloads = []
+    subscriber = ActiveSupport::Notifications.subscribe("talk_to_your_app.auth_failure") do |*args|
+      payloads << ActiveSupport::Notifications::Event.new(*args).payload
+    end
+    TalkToYourApp.configure { |c| c.api_keys = { "k" => "sekret" } }
+    middleware.call(env_for("REMOTE_ADDR" => "198.51.100.7"))
+
+    assert_equal 1, payloads.size
+    assert_equal "missing_credentials", payloads.first[:reason]
+    assert_equal "198.51.100.7", payloads.first[:ip]
+  ensure
+    ActiveSupport::Notifications.unsubscribe(subscriber)
   end
 
   # Multiple API keys (key rotation) each map to their own principal name, so a

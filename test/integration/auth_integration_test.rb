@@ -76,4 +76,31 @@ class AuthIntegrationTest < TalkToYourApp::TestCase
     end
     assert_match(/authentication/, error.message)
   end
+
+  # `config.api_keys = { "x" => ENV["TTYA_KEY"] }` with the variable unset used
+  # to boot clean and then 401 every request: a blank key counts as "auth
+  # configured" but can never authenticate. Fail at deploy instead.
+  def test_boot_validation_rejects_blank_api_key_values
+    TalkToYourApp.reset_configuration!
+    TalkToYourApp.configure do |c|
+      c.api_keys = { "good" => "sk-good", "unset-env" => nil, "empty" => "  " }
+      c.plugin :echo, connection: false
+    end
+    error = assert_raises(TalkToYourApp::ConfigurationError) do
+      TalkToYourApp::Railtie.validate_boot!
+    end
+    assert_match(/blank value/, error.message)
+    assert_match(/unset-env/, error.message)
+    assert_match(/empty/, error.message)
+    refute_match(/sk-good/, error.message, "the error must not echo a valid key")
+  end
+
+  def test_boot_validation_accepts_populated_api_keys
+    TalkToYourApp.reset_configuration!
+    TalkToYourApp.configure do |c|
+      c.api_keys = { "claude-desktop" => "sk-good" }
+      c.plugin :echo, connection: false
+    end
+    TalkToYourApp::Railtie.validate_boot! # must not raise
+  end
 end

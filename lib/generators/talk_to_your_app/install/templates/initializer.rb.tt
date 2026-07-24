@@ -126,3 +126,8 @@ end
 # rescue => err
 #   Rails.logger.warn("activity log failed: #{err.message}")
 # end
+#
+# Rejected requests are logged too — one WARN line per 401, plus a
+# "talk_to_your_app.auth_failure" event (reason, scheme, ip; never any
+# credential material). Subscribe to alert on credential guessing. The gem does
+# not rate-limit: put a throttle (e.g. Rack::Attack) in front of mount_at.

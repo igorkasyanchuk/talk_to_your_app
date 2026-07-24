@@ -6,6 +6,46 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+- Failed authentication is now logged. Every rejected request emits one `WARN`
+  line and a `talk_to_your_app.auth_failure` notification carrying `reason`
+  (`missing_credentials`, `unsupported_scheme`, `invalid_credentials`,
+  `validator_error`), `scheme`, `ip`, and `error_class` when a validator raised.
+  Previously a `401` left no trace at all, so credential guessing and endpoint
+  scanning were undetectable while every *successful* call was audit-logged. No
+  credential material is logged, and an unrecognized scheme is reported as
+  `other` so a crafted `Authorization` header cannot forge log fields. The level
+  is fixed at `:warn` rather than following `config.log_level`.
+
+### Changed
+- A raising `basic_auth` callable is now reported through the configured audit
+  logger (as `reason=validator_error`) instead of `Kernel#warn`, so it reaches
+  the same sink as the rest of the audit trail. The request outcome is unchanged
+  (`401`, never a `500`).
+
+### Fixed
+- `require "talk_to_your_app"` raised `NameError: uninitialized constant
+  ActiveSupport::CodeGenerator` anywhere ActiveSupport had not already been fully
+  loaded — a plain script, a non-Rails Rack process, or any Gemfile that reaches
+  this gem before `rails`. `current.rb` required
+  `active_support/current_attributes` without `active_support` itself, and every
+  Rails boot hid it. Now covered by a test that loads the gem in a fresh
+  subprocess, which is the only way to catch a load-order bug the suite's own
+  Rails boot papers over.
+- Boot now rejects a **blank API key value**. `config.api_keys = { "x" =>
+  ENV["TTYA_KEY"] }` with the variable unset previously booted clean —
+  `auth_configured?` counted the entry, but a blank key can never authenticate,
+  so the endpoint returned `401` to every request with no signal that anything
+  was wrong. The error names the offending key(s) and never echoes a valid one.
+
+### Fixed (docs)
+- `SECURITY.md` now lists rate limiting, alerting on rejected requests,
+  and `X-Forwarded-For` IP trust in the operator checklist, and names rate
+  limiting plus query-driven resource exhaustion as operator-owned in the threat
+  model. The README documents the auth-failure line and notes that `max_rows`
+  bounds the response, not process memory — the full result set is fetched
+  before truncation.
+
 ## [0.1.0.pre.7] - 2026-07-24
 
 ### Removed
