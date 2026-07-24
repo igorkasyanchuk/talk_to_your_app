@@ -1,0 +1,45 @@
+default: &default
+  adapter: sqlite3
+  pool: 5
+  timeout: 5000
+
+# The local MCP-server demo (LOCAL_DEVELOPMENT.md) runs on Postgres so the DB
+# plugin can connect through a genuine read-only user. Both connections point at
+# the SAME database; `replica_readonly` just authenticates as a SELECT-only role
+# (created by db:seed). `replica: true` keeps it out of db:create/migrate.
+development:
+  primary: &pg_dev
+    adapter: postgresql
+    host: <%= ENV.fetch("TTYA_DEV_DB_HOST", "localhost") %>
+    port: <%= ENV.fetch("TTYA_DEV_DB_PORT", 5432) %>
+    database: <%= ENV.fetch("TTYA_DEV_DB_NAME", "ttya_dummy_development") %>
+    username: <%= ENV.fetch("TTYA_DEV_DB_USER", "postgres") %>
+    password: <%= ENV.fetch("TTYA_DEV_DB_PASSWORD", "") %>
+    pool: 5
+  replica_readonly:
+    <<: *pg_dev
+    username: <%= ENV.fetch("TTYA_DEV_RO_USER", "ttya_dummy_ro") %>
+    password: <%= ENV.fetch("TTYA_DEV_RO_PASSWORD", "ro_pass") %>
+    replica: true
+
+test:
+  primary:
+    <<: *default
+    database: ":memory:"
+  # Real Postgres connections for the DB-plugin read-only/timeout tests.
+  # `primary_pg` is the read-write setup role; `replica_pg_ro` is a genuinely
+  # read-only Postgres role (GRANT SELECT only). See test/support/pg_test_db.rb.
+  primary_pg:
+    adapter: postgresql
+    host: localhost
+    port: 5432
+    database: ttya_test
+    username: postgres
+    password:
+  replica_pg_ro:
+    adapter: postgresql
+    host: localhost
+    port: 5432
+    database: ttya_test
+    username: ttya_ro
+    password: ro_pass

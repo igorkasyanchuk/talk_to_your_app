@@ -1,0 +1,24 @@
+# frozen_string_literal: true
+
+# Custom MCP tool. Exposed automatically by the :custom_tools plugin as
+# "custom.<%= ([*class_path, file_name].join(".")) %>". See the README "Custom tools".
+<% class_path.each do |path| -%>
+module <%= path.camelize %>
+<% end -%>
+class <%= class_name.demodulize %> < TalkToYourApp::Tool
+  name        "custom.<%= ([*class_path, file_name].join(".")) %>"
+  description "TODO: describe what <%= class_name %> does (shown to the client)."
+
+  # Declare arguments with the Tool DSL (compiled to JSON Schema):
+  # argument :user_id, :integer, required: true, description: "..."
+
+  def call(args, ctx)
+    # `ctx` exposes ctx.principal, ctx.ip, ctx.session_id, and
+    # ctx.connection(:name) { |conn| ... } for role-switched DB access.
+    # Return a String (text), a Hash/Array (JSON), or use text(...) / json(...) / error(...).
+    json(ok: true, tool: "custom.<%= ([*class_path, file_name].join(".")) %>")
+  end
+end
+<% class_path.each do |_path| -%>
+end
+<% end -%>

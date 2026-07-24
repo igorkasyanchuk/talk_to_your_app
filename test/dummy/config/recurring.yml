@@ -1,0 +1,7 @@
+# Solid Queue recurring tasks. The heartbeat runs every minute when the worker
+# is running (see LOCAL_DEVELOPMENT.md: `bin/jobs`).
+development:
+  heartbeat:
+    class: HeartbeatJob
+    queue: default
+    schedule: every minute

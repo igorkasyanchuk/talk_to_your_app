@@ -1,0 +1,128 @@
+# frozen_string_literal: true
+
+# talk_to_your_app configuration.
+#
+# This gem is fail-closed: if required configuration is missing, the app raises
+# at boot rather than at the first MCP request. At minimum you must configure
+# one authentication mechanism and mount the endpoint in config/routes.rb.
+#
+# After editing this file, add to config/routes.rb:
+#   mount TalkToYourApp.rack_app, at: TalkToYourApp.configuration.mount_at
+#
+# Production checklist: https://github.com/igorkasyanchuk/talk_to_your_app/blob/main/SECURITY.md
+
+TalkToYourApp.configure do |config|
+  # --- On/off ---------------------------------------------------------------
+  # Global switch. When false the endpoint serves 503 and boot validation is
+  # skipped. Recommended: keep production off until auth, a SELECT-only DB
+  # connection, authorize, and allowed_hosts are wired — then opt in via ENV.
+  # Default true when unset.
+  # config.enabled = ENV.fetch("TTYA_ENABLED", Rails.env.local?.to_s) == "true"
+
+  # --- Endpoint -------------------------------------------------------------
+  # Path the MCP Streamable HTTP endpoint is served from. Default "/mcp".
+  # config.mount_at = "/mcp"
+
+  # Stateless transport: every request is self-contained, so any worker or
+  # replica can serve it. Required for multi-worker / multi-replica deploys
+  # (most production apps) — otherwise a follow-up request can land on a
+  # process that never saw `initialize` and fail with "Session not found".
+  # Stateless mode does not support SSE streaming or server-initiated
+  # notifications. Default false when unset.
+  config.stateless = true if Rails.env.production?
+
+  # --- Server identity (shown to MCP clients in the initialize handshake) ---
+  # config.server_name = "talk_to_your_app"
+  # config.server_title = "Acme — talk to your app"
+  # config.server_version = "1.0.0"
+  # config.server_description = "Read-only access to Acme's data over MCP."
+  # config.instructions = "Use db.query for read-only SQL; sidekiq.* for queue metrics."
+
+  # Origins allowed for browser-originated requests (DNS-rebinding protection).
+  # config.allowed_origins = ["https://app.example.com"]
+
+  # Host header values accepted beyond the loopback defaults (127.0.0.1, ::1,
+  # localhost). REQUIRED when the endpoint is served from a real domain rather
+  # than localhost — otherwise every request is rejected with
+  # "Forbidden: Invalid Host header". Defaults to your app's own host allowlist
+  # (Rails' config.hosts), keeping only literal host strings — add wildcard or
+  # regexp hosts explicitly.
+  config.allowed_hosts = TalkToYourApp.rails_hosts
+  # config.allowed_hosts += ["app.example.com"]
+
+  # --- Authentication (at least one is required once a plugin is enabled) ---
+  # Named API keys. The name becomes the logged principal, so use stable,
+  # human-meaningful names. One high-entropy token per client (from ENV /
+  # credentials) — never a shared forever-secret in source.
+  # config.api_keys = { "claude-desktop" => ENV.fetch("TTYA_KEY") }
+  #
+  # HTTP Basic auth. The callable receives (username, password) and returns
+  # true/false. Wire it to whatever the host app uses.
+  # config.basic_auth { |username, password| User.authenticate(username, password) }
+
+  # Strongly recommended in production. Without it, every authenticated
+  # principal may call every enabled tool. Receives
+  # (principal, tool_name, args) — args is the tool's argument hash, so you can
+  # authorize per flag/task/argument, not just per tool.
+  # config.authorize do |principal, tool, _args|
+  #   case principal
+  #   when "ci-readonly-bot" then tool.start_with?("db.")
+  #   when "admin" then true
+  #   else false
+  #   end
+  # end
+
+  # --- Connections ----------------------------------------------------------
+  # Declare named DB connections, then wire one into each plugin that needs a
+  # database (see Plugins below). `database:` maps to a database.yml key. `role:`
+  # defaults to :reading — pass role: :writing for a writer. Boot fails if a
+  # plugin is enabled without a connection wired, or names one not declared here.
+  #
+  # IMPORTANT: point a :reading connection at a genuinely read-only DB user
+  # (only SELECT granted) or a replica — not your writable primary. That role is
+  # the security boundary. See the README "Read-only is enforced by the database".
+  #
+  # config.connection :read,  database: "readonly"                 # role: :reading (default)
+  # config.connection :write, database: "primary", role: :writing
+
+  # --- Logging --------------------------------------------------------------
+  # Audit logger. Defaults to Rails.logger at INFO. Swappable to any object
+  # implementing the Logger interface.
+  # config.logger = Rails.logger
+  # config.log_level = :info
+
+  # --- Plugins (all off by default) -----------------------------------------
+  # EVERY plugin must declare connection: — a connection name (above), or
+  # `connection: false` to opt out (no wired SQL connection).
+  # config.plugin :db, connection: :read            # db.query caps results at 2000 rows
+  # config.plugin :db, connection: :read, max_rows: 5000   # ...raise/lower the cap (nil/false/:unlimited removes it)
+  # config.plugin :sidekiq, connection: false       # Sidekiq job metrics (reads Redis; job args may contain secrets)
+  # config.plugin :solid_queue, connection: false   # Solid Queue job metrics (both may run at once)
+  # config.plugin :flipper, connection: :write      # Flipper writes flag state — requires a :writing connection
+  # config.plugin :rake, connection: false, allowed: ["stats", "report:generate"]   # optional: timeout: 60 (per-task seconds, default 20)
+  # config.plugin :cache, connection: false         # cache.clear (Rails.cache.clear) — destructive, scope with config.authorize
+  # config.plugin :custom_tools, connection: false  # or connection: :read to give tools a default
+  #
+  # DANGER — running :db against a writable connection. Wiring a :writing
+  # connection lets db.query execute arbitrary writes (UPDATE/INSERT/DELETE/DDL):
+  #   config.plugin :db, connection: :write
+  # Only do this deliberately. Scope the DB user's privileges as the real control:
+  # `config.authorize` cannot distinguish reads from writes (the tool is always
+  # "db.query"), and full SQL — including literal values — is written to the audit
+  # log. Prefer a read-only connection unless you specifically need writes.
+end
+
+# --- Custom audit logging (optional) ----------------------------------------
+# Every tool call emits a structured event. Subscribe to persist a full audit
+# trail (IP, principal, params, outcome, duration) to your own table.
+#
+# ActiveSupport::Notifications.subscribe("talk_to_your_app.tool_call") do |*args|
+#   e = ActiveSupport::Notifications::Event.new(*args).payload
+#   Activity.create!(
+#     principal: e[:principal], ip: e[:ip], plugin: e[:plugin].to_s,
+#     tool: e[:tool], params: e[:params].to_json,
+#     outcome: e[:outcome], duration_ms: e[:duration_ms],
+#   )
+# rescue => err
+#   Rails.logger.warn("activity log failed: #{err.message}")
+# end
