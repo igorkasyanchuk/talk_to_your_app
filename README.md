@@ -2,9 +2,9 @@
 
 **Let an AI agent talk to your running Rails app — safely.** `talk_to_your_app` mounts a [Model Context Protocol](https://modelcontextprotocol.io) endpoint on your app, so a tool like Claude can query your database, inspect background jobs, flip feature flags, and call tools you write yourself — all behind your auth, all audit-logged, and read-only unless you opt into a write-capable plugin.
 
-[![Watch the 20-second demo](docs/demo_poster.png)](docs/demo.mp4)
+[![20-second demo](docs/demo.gif)](docs/demo.mp4)
 
-> ▶️ Click the image above — 20 seconds: setup, live `db.query`, and read-only enforcement.
+> ▶️ Click for the full-quality video — setup, live `db.query`, and read-only enforcement.
 
 It's a thin, Rails-native layer over the official [MCP Ruby SDK](https://github.com/modelcontextprotocol/ruby-sdk): the SDK handles the wire protocol; this gem adds everything Rails — your replicas, your jobs backend, your feature flags — plus the guardrails that make pointing an agent at your app something you can actually ship.
 
