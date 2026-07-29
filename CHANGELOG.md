@@ -6,6 +6,10 @@ breaking changes.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-29
+
+First stable release.
+
 ### Added
 - Failed authentication is now logged. Every rejected request emits one `WARN`
   line and a `talk_to_your_app.auth_failure` notification carrying `reason`
