@@ -13,7 +13,7 @@ module TalkToYourApp
   # can skip cleanly.
   module PgTestDb
     HOST = ENV.fetch("TTYA_TEST_DB_HOST", "localhost")
-    PORT = ENV.fetch("TTYA_TEST_DB_PORT", 5432)
+    PORT = Integer(ENV.fetch("TTYA_TEST_DB_PORT", 5432))
     SUPERUSER = ENV.fetch("TTYA_TEST_DB_USER", "postgres")
 
     module_function
