@@ -6,6 +6,21 @@ breaking changes.
 
 ## [Unreleased]
 
+### Changed
+- **`mcp` SDK dependency raised to `~> 1.1`.** Host apps that already depend on
+  the 1.x SDK could not bundle this gem alongside it — Bundler cannot resolve
+  `~> 0.25.0` and `~> 1.1` at once. The SDK's 0.25 → 1.1 delta is additive for
+  everything this gem touches (`MCP::Server`, `StreamableHTTPTransport`,
+  `MCP::Tool.define`, `MCP::Tool::Response`): 1.1 adds the MCP 2026-07-28
+  stateless lifecycle (SEP-2575) and refines the structured-content fallback,
+  neither of which changes this gem's behavior. No code changes were needed;
+  the full test suite passes unmodified against 1.1.0.
+- The Postgres used by the DB-plugin tests is now configurable via
+  `TTYA_TEST_DB_HOST` / `TTYA_TEST_DB_PORT` / `TTYA_TEST_DB_USER`
+  (defaults unchanged: `localhost:5432` as `postgres`), so the suite's
+  Postgres-backed tests can run in environments where the server lives on
+  another host — e.g. a devcontainer's `postgres` service.
+
 ## [0.1.0] - 2026-07-29
 
 First stable release.
