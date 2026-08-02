@@ -12,9 +12,9 @@ module TalkToYourApp
   # Postgres is reachable and provisioning succeeded, false otherwise so tests
   # can skip cleanly.
   module PgTestDb
-    HOST = "localhost"
-    PORT = 5432
-    SUPERUSER = "postgres"
+    HOST = ENV.fetch("TTYA_TEST_DB_HOST", "localhost")
+    PORT = ENV.fetch("TTYA_TEST_DB_PORT", 5432)
+    SUPERUSER = ENV.fetch("TTYA_TEST_DB_USER", "postgres")
 
     module_function
 
