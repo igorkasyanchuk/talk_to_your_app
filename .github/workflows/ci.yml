@@ -15,6 +15,11 @@ jobs:
       matrix:
         ruby: ["3.3", "4.0"]
         rails: ["7.2", "8.0", "8.1"]
+        include:
+          # Lower bound of the mcp SDK requirement (~> 1.1); the main matrix
+          # resolves the newest 1.x.
+          - ruby: "3.3"
+            rails: "8.1-mcp-1.1"
 
     services:
       postgres:
