@@ -6,24 +6,24 @@ breaking changes.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-02
+
 ### Changed
-- **`mcp` SDK dependency raised to `~> 1.1`.** Host apps that already depend on
-  the 1.x SDK could not bundle this gem alongside it — Bundler cannot resolve
-  `~> 0.25.0` and `~> 1.1` at once. The SDK's 0.25 → 1.1 delta is additive for
-  everything this gem touches (`MCP::Server`, `StreamableHTTPTransport`,
-  `MCP::Tool.define`, `MCP::Tool::Response`): 1.1 adds the MCP 2026-07-28
-  stateless lifecycle (SEP-2575) and refines the structured-content fallback,
-  neither of which changes this gem's behavior. No code changes were needed;
-  the full test suite passes unmodified against 1.1.0 and 1.3.0 — both ends of
-  the `~> 1.1` range, which CI now covers explicitly. Every API this gem
-  touches is unchanged across that range; later 1.x SDKs add behavior hosts
-  inherit through this gem with no change on the gem's side: `initialize`
+- **`mcp` SDK dependency raised to `~> 1.4`.** 0.1.0 pinned `~> 0.25.0`, which
+  cannot resolve alongside a host app on the 1.x SDK. 1.4.0 is the current
+  SDK; the 0.25 → 1.4 delta is additive for every API this gem touches
+  (`MCP::Server`, `StreamableHTTPTransport`, `MCP::Tool.define`,
+  `MCP::Tool::Response`). No gem source changes were needed; the suite passes
+  unmodified against 1.4.0. Behavior hosts inherit through this gem: `initialize`
   counter-offers protocol version 2025-11-25 to clients requesting 2026-07-28;
   a crashing tool no longer leaks its exception message into the JSON-RPC
   error response (CWE-209 hardening); the Streamable HTTP transport also
   serves the SEP-2575 sessionless path when a client sends
-  `MCP-Protocol-Version: 2026-07-28`; and duplicate in-flight JSON-RPC request
-  ids on one session are rejected with `409`.
+  `MCP-Protocol-Version: 2026-07-28`; duplicate in-flight JSON-RPC request
+  ids on one session are rejected with `409`; and `subscriptions/listen`
+  streams are ordered and can be declined by buffering hosts via
+  `serve_subscriptions_listen:` (this gem mounts the transport as a Rack app,
+  so the SDK default of `true` is correct).
 - The Postgres used by the DB-plugin tests is now configurable via
   `TTYA_TEST_DB_HOST` / `TTYA_TEST_DB_PORT` / `TTYA_TEST_DB_USER`
   (defaults unchanged: `localhost:5432` as `postgres`), so the suite's
