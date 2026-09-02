@@ -41,8 +41,8 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   # Protocol/transport layer — the official MCP Ruby SDK (published as `mcp`).
-  # Pin tightly: it is pre-1.0 and minor releases may break. See README "Upgrade discipline".
-  spec.add_dependency "mcp", "~> 0.25.0"
+  # Pin to the 1.x line; see README "Upgrade discipline".
+  spec.add_dependency "mcp", "~> 1.1"
 
   # Rails integration. Hard deps: we are a Rails-native gem.
   spec.add_dependency "activerecord", ">= 7.2"

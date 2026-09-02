@@ -31,15 +31,15 @@ test:
   # read-only Postgres role (GRANT SELECT only). See test/support/pg_test_db.rb.
   primary_pg:
     adapter: postgresql
-    host: localhost
-    port: 5432
+    host: <%= ENV.fetch("TTYA_TEST_DB_HOST", "localhost") %>
+    port: <%= ENV.fetch("TTYA_TEST_DB_PORT", 5432) %>
     database: ttya_test
-    username: postgres
+    username: <%= ENV.fetch("TTYA_TEST_DB_USER", "postgres") %>
     password:
   replica_pg_ro:
     adapter: postgresql
-    host: localhost
-    port: 5432
+    host: <%= ENV.fetch("TTYA_TEST_DB_HOST", "localhost") %>
+    port: <%= ENV.fetch("TTYA_TEST_DB_PORT", 5432) %>
     database: ttya_test
     username: ttya_ro
     password: ro_pass

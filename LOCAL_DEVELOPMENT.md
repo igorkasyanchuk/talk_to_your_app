@@ -281,4 +281,4 @@ Writing a plugin uses the same public DSL as the bundled ones — see
   `test/support/mcp_driver.rb` (the `initialize` handshake → `tools/list` →
   `tools/call`).
 - Keep SDK touch points isolated to `transport/rails_mount.rb` and tool
-  compilation; the `mcp` gem is pinned `~> 0.25.0` (see the README upgrade note).
+  compilation; the `mcp` gem is pinned `~> 1.1` (see the README upgrade note).
