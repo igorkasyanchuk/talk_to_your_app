@@ -527,13 +527,13 @@ config.stateless = true   # required for multi-worker/multi-replica deployments
 | Ruby | 3.3+ |
 | Rails | 7.2+ |
 | MCP spec | 2026-07-28 (Streamable HTTP) |
-| MCP SDK (`mcp` gem) | `~> 1.1` |
+| MCP SDK (`mcp` gem) | `~> 1.4` |
 
 Tested against Rails 7.2, 8.0, and 8.1 on Ruby 3.3 and 4.0 in CI.
 
 ## Upgrade discipline
 
-This gem pins the `mcp` SDK to `~> 1.1` and isolates all SDK touch points to the transport mount and tool compilation. Watch the SDK's releases before bumping, and pin it in your own `Gemfile.lock`.
+This gem pins the `mcp` SDK to `~> 1.4` and isolates all SDK touch points to the transport mount and tool compilation. Watch the SDK's releases before bumping, and pin it in your own `Gemfile.lock`.
 
 This gem is also pre-1.0 — releases may include breaking changes, each documented with migration steps in the **[CHANGELOG](CHANGELOG.md)**.
 

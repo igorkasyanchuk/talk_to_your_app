@@ -42,7 +42,7 @@ Gem::Specification.new do |spec|
 
   # Protocol/transport layer — the official MCP Ruby SDK (published as `mcp`).
   # Pin to the 1.x line; see README "Upgrade discipline".
-  spec.add_dependency "mcp", "~> 1.1"
+  spec.add_dependency "mcp", "~> 1.4"
 
   # Rails integration. Hard deps: we are a Rails-native gem.
   spec.add_dependency "activerecord", ">= 7.2"
