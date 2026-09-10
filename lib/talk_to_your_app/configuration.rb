@@ -10,8 +10,6 @@ module TalkToYourApp
   # the TalkToYourApp module, so calling `TalkToYourApp.configure` more than
   # once merges into the same instance rather than replacing it.
   class Configuration
-    # Default per-check timeout (seconds) for `config.health_check`, overridable
-    # per-check. See #health_check for why this exists.
     DEFAULT_HEALTH_CHECK_TIMEOUT = 10
 
     # Path the MCP endpoint is mounted at in the host app's router. Default "/mcp".
@@ -138,37 +136,6 @@ module TalkToYourApp
       false
     end
 
-    # Registers a named health check. `block` is called with no arguments and
-    # must return either a boolean (pass/fail, no extra value) or a
-    # [passed, value] pair, where `value` is any JSON-serializable payload the
-    # check wants to surface (a count, a timestamp, a status string). Re-registering
-    # an existing name overwrites it — the last declaration in the initializer wins,
-    # matching how `connection`/`plugin` behave elsewhere in this class.
-    #
-    # `timeout:` (seconds, default #{DEFAULT_HEALTH_CHECK_TIMEOUT}) bounds how long
-    # `health.run` waits on the block. A check is arbitrary operator code that may
-    # poke a third-party API or a wedged dependency — without a bound, a hung check
-    # pins the calling thread indefinitely, which on a multi-threaded Puma worker
-    # can starve the whole MCP endpoint (and any other Rails traffic sharing the
-    # pool). Mirrors the DB plugin's per-query `statement_timeout` for the same
-    # reason.
-    #
-    # `timeout:` is a best-effort Ruby-level backstop, not a hard kill: it's
-    # implemented with Timeout.timeout, which can't interrupt a thread blocked
-    # inside a C extension (a stuck socket read in an HTTP client, a blocking DB
-    # driver call, a stalled DNS lookup) — exactly the shape of a real third-party
-    # API outage. Prefer the dependency's own timeout/deadline option inside the
-    # block when it has one. Also: a `rescue StandardError`/bare `rescue` inside
-    # the check's own block can swallow the timeout before it reaches `health.run`
-    # (Timeout.timeout raises wherever the block currently is, including inside its
-    # own rescue) — avoid broad rescues in a health check body for this reason.
-    #
-    #   config.health_check(:video_pipeline) do
-    #     recent = VideoJob.where("created_at > ?", 15.minutes.ago)
-    #     [recent.any? && recent.all?(&:succeeded?), recent.count]
-    #   end
-    #
-    #   config.health_check(:slow_api, timeout: 3) { ThirdParty::Client.ping? }
     def health_check(name, timeout: DEFAULT_HEALTH_CHECK_TIMEOUT, &block)
       raise ArgumentError, "health_check #{name.inspect}: a block is required" unless block
       unless timeout.is_a?(Numeric) && timeout.positive?
@@ -178,19 +145,6 @@ module TalkToYourApp
       @health_checks_mutex.synchronize { @health_checks[name.to_sym] = { block: block, timeout: timeout } }
     end
 
-    # Declared health checks, keyed by name => { block:, timeout: }. Reads copy
-    # the hash under the same lock #health_check writes under — Ruby Hash isn't
-    # safe for concurrent mutation-during-iteration, and unlike @connections/
-    # @enabled_plugins (populated once at boot, read-only after), operators are
-    # documented to be able to re-register a check at runtime (tests, console).
-    #
-    # The .dup-then-lookup in RunCheck is a snapshot, so there's a narrow TOCTOU
-    # window: a check registered concurrently with an in-flight health.run for
-    # the same name can miss the snapshot and read as "Unknown health check".
-    # Accepted trade-off, not an oversight — checks are normally registered once
-    # at boot before traffic flows, and holding the lock across the tool call
-    # (to close the window) would be strictly worse: it would serialize every
-    # concurrent health.run behind a single mutex for the whole check duration.
     def health_checks
       @health_checks_mutex.synchronize { @health_checks.dup }
     end

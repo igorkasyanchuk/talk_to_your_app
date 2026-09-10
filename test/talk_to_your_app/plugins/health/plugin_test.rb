@@ -13,9 +13,6 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
     super
   end
 
-  # #health_checks returns a defensive copy (thread-safety — see
-  # Configuration#health_checks), so clearing it doesn't clear the
-  # configuration; reach the ivar directly instead.
   def reset_health_checks!
     TalkToYourApp.configuration.instance_variable_get(:@health_checks).clear
   end
@@ -47,7 +44,7 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
 
     response = TalkToYourApp::Plugins::Health::Tools::ListChecks.dispatch({}, plugin_name: :health)
     payload = JSON.parse(response.content.first[:text])
-    assert_equal ["flag"], payload["checks"] # not duplicated
+    assert_equal ["flag"], payload["checks"]
   end
 
   def test_list_returns_registered_names_sorted
@@ -105,12 +102,9 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
   def test_run_raising_check_is_reported_as_failed_not_a_500
     TalkToYourApp.configuration.health_check(:flaky) { raise "boom" }
     response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "flaky" }, plugin_name: :health)
-    refute response.error? # not a tool-dispatch error — a reported failed check
+    refute response.error?
     payload = JSON.parse(response.content.first[:text])
     assert_equal false, payload["passed"]
-    # Only the exception class reaches the client — the message might carry a
-    # URL, token, or hostname. The full message goes to the server log instead
-    # (see test_run_raising_check_logs_the_full_message_server_side).
     assert_equal "RuntimeError", payload["error"]
     refute_match(/boom/, payload["error"])
   end
@@ -118,10 +112,6 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
   def test_run_raising_check_logs_the_full_message_server_side
     logger = Minitest::Mock.new
     logger.expect(:warn, nil) { |msg| msg.include?("flaky") && msg.include?("boom") }
-    # AuditLogger also logs its own success/error line through the same
-    # configured logger, at whatever level the plugin defaults to (info) —
-    # mock it as a no-op so this test only asserts on the health-check-specific
-    # warn line, not the framework's own audit line.
     logger.expect(:info, nil) { true }
     TalkToYourApp.configuration.logger = logger
 
@@ -149,26 +139,18 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
     assert_equal true, payload["passed"]
   end
 
-  # Documents a known limit (see RunCheck::HealthCheckTimeout's comment and the
-  # README callout): a broad rescue inside the check's own block can swallow
-  # the timeout exception before it ever reaches RunCheck, since Timeout.timeout
-  # raises wherever the block is currently executing. Not a bug to fix here —
-  # operators are told to avoid this pattern — but pinned by a test so a future
-  # change to the timeout mechanism can't silently make this worse unnoticed.
   def test_run_broad_rescue_inside_check_swallows_the_timeout
     TalkToYourApp.configuration.health_check(:swallows_timeout, timeout: 0.05) do
       begin
         sleep 1
         true
       rescue StandardError
-        false # operator's own catch-all -- accidentally catches HealthCheckTimeout too
+        false
       end
     end
 
     response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "swallows_timeout" }, plugin_name: :health)
     payload = JSON.parse(response.content.first[:text])
-    # Reports as an ordinary failed check, NOT a "timed out after ..." error --
-    # the operator's rescue caught HealthCheckTimeout before RunCheck could.
     assert_equal false, payload["passed"]
     assert_nil payload["error"]
   end
