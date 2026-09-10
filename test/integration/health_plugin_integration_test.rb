@@ -17,7 +17,7 @@ class HealthPluginIntegrationTest < TalkToYourApp::TestCase
   end
 
   def teardown
-    TalkToYourApp.configuration.health_checks.clear
+    TalkToYourApp.configuration.instance_variable_get(:@health_checks).clear
     super
   end
 

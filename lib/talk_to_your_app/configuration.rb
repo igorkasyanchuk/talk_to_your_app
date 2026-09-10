@@ -10,6 +10,10 @@ module TalkToYourApp
   # the TalkToYourApp module, so calling `TalkToYourApp.configure` more than
   # once merges into the same instance rather than replacing it.
   class Configuration
+    # Default per-check timeout (seconds) for `config.health_check`, overridable
+    # per-check. See #health_check for why this exists.
+    DEFAULT_HEALTH_CHECK_TIMEOUT = 10
+
     # Path the MCP endpoint is mounted at in the host app's router. Default "/mcp".
     attr_accessor :mount_at
 
@@ -84,6 +88,7 @@ module TalkToYourApp
       @connections = {}
       @enabled_plugins = {}
       @health_checks = {}
+      @health_checks_mutex = Mutex.new
       @logger = nil
       @api_keys = {}
       @allowed_origins = []
@@ -140,18 +145,37 @@ module TalkToYourApp
     # an existing name overwrites it — the last declaration in the initializer wins,
     # matching how `connection`/`plugin` behave elsewhere in this class.
     #
+    # `timeout:` (seconds, default #{DEFAULT_HEALTH_CHECK_TIMEOUT}) bounds how long
+    # `health.run` waits on the block. A check is arbitrary operator code that may
+    # poke a third-party API or a wedged dependency — without a bound, a hung check
+    # pins the calling thread indefinitely, which on a multi-threaded Puma worker
+    # can starve the whole MCP endpoint (and any other Rails traffic sharing the
+    # pool). Mirrors the DB plugin's per-query `statement_timeout` for the same
+    # reason.
+    #
     #   config.health_check(:video_pipeline) do
     #     recent = VideoJob.where("created_at > ?", 15.minutes.ago)
     #     [recent.any? && recent.all?(&:succeeded?), recent.count]
     #   end
-    def health_check(name, &block)
+    #
+    #   config.health_check(:slow_api, timeout: 3) { ThirdParty::Client.ping? }
+    def health_check(name, timeout: DEFAULT_HEALTH_CHECK_TIMEOUT, &block)
       raise ArgumentError, "health_check #{name.inspect}: a block is required" unless block
+      unless timeout.is_a?(Numeric) && timeout.positive?
+        raise ArgumentError, "health_check #{name.inspect}: timeout must be a positive number, got #{timeout.inspect}"
+      end
 
-      @health_checks[name.to_sym] = block
+      @health_checks_mutex.synchronize { @health_checks[name.to_sym] = { block: block, timeout: timeout } }
     end
 
-    # Declared health checks, keyed by name => callable.
-    attr_reader :health_checks
+    # Declared health checks, keyed by name => { block:, timeout: }. Reads copy
+    # the hash under the same lock #health_check writes under — Ruby Hash isn't
+    # safe for concurrent mutation-during-iteration, and unlike @connections/
+    # @enabled_plugins (populated once at boot, read-only after), operators are
+    # documented to be able to re-register a check at runtime (tests, console).
+    def health_checks
+      @health_checks_mutex.synchronize { @health_checks.dup }
+    end
 
     # Declared named connections, keyed by gem-internal symbol name.
     attr_reader :connections

@@ -327,15 +327,19 @@ config.health_check(:video_pipeline) do
   [recent.any? && recent.all?(&:succeeded?), recent.count]
 end
 
-config.health_check(:transcription_api) do
+config.health_check(:transcription_api, timeout: 3) do
   Transcription::Client.ping? # a bare boolean is fine too
 end
 ```
 
-A check is a block that takes no arguments and returns either a bare boolean (pass/fail, no extra value) or a `[passed, value]` pair, where `value` is any JSON-serializable payload worth surfacing alongside the result (a count, a status string, a timestamp). Re-registering a name overwrites it, so re-running the initializer in a test or console session doesn't accumulate duplicates.
+A check is a block that takes no arguments and returns either a bare boolean (pass/fail, no extra value) or a `[passed, value]` pair, where `value` is any JSON-serializable payload worth surfacing alongside the result (a count, a status string, a timestamp). Any other return shape (a bare number, `nil`, a 3-element array, ...) is rejected as a tool error rather than guessed at — silently coercing e.g. `0` or `nil` via Ruby truthiness would misreport the exact thing this tool exists to report accurately. Re-registering a name overwrites it, so re-running the initializer in a test or console session doesn't accumulate duplicates.
+
+`timeout:` (seconds, default `10`) bounds how long `health.run` waits on the block. A check is arbitrary code that may call a third-party API — without a bound, a wedged dependency hangs the calling thread indefinitely, which on a multi-threaded Puma worker can starve the whole MCP endpoint. A timed-out check reports `passed: false` the same as any other failure.
+
+> ⚠️ **The registered block is a single `Proc` invoked concurrently** by every simultaneous `health.run` call for that name. Don't lazily assign to a closed-over local (`@client ||= build_client`) inside the block — that's a data race across concurrent requests. Build any long-lived resource once, outside the block, and reference it; fetch anything request-scoped fresh inside the block.
 
 - **`health.list`** — the names of every registered check, sorted.
-- **`health.run`** — `name` (required, must be a registered check). Returns `{ name, passed, value }`. A check that raises is reported as `{ passed: false, value: nil, error: "<class>: <message>" }` rather than surfacing a 500 — the same posture the DB and Flipper plugins take toward backend failures.
+- **`health.run`** — `name` (required, must be a registered check). Returns `{ name, passed, value }`. A check that raises or times out is reported as `{ passed: false, value: nil, error: "<class>" }` rather than surfacing a 500 — the same posture the DB and Flipper plugins take toward backend failures. The full exception (class **and** message) is logged server-side at `warn`; only the exception class reaches the MCP client, since the rescued code is arbitrary operator Ruby and a message can easily embed a URL, token, or internal hostname.
 
 v1 is deliberately minimal: no scheduling, no aggregation across runs, no alerting, no historical storage. A check runs exactly when `health.run` is called and reports that one result. Wire it into your own scheduler/alerting if you want more.
 
