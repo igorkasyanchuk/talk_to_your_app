@@ -153,6 +153,16 @@ module TalkToYourApp
     # pool). Mirrors the DB plugin's per-query `statement_timeout` for the same
     # reason.
     #
+    # `timeout:` is a best-effort Ruby-level backstop, not a hard kill: it's
+    # implemented with Timeout.timeout, which can't interrupt a thread blocked
+    # inside a C extension (a stuck socket read in an HTTP client, a blocking DB
+    # driver call, a stalled DNS lookup) — exactly the shape of a real third-party
+    # API outage. Prefer the dependency's own timeout/deadline option inside the
+    # block when it has one. Also: a `rescue StandardError`/bare `rescue` inside
+    # the check's own block can swallow the timeout before it reaches `health.run`
+    # (Timeout.timeout raises wherever the block currently is, including inside its
+    # own rescue) — avoid broad rescues in a health check body for this reason.
+    #
     #   config.health_check(:video_pipeline) do
     #     recent = VideoJob.where("created_at > ?", 15.minutes.ago)
     #     [recent.any? && recent.all?(&:succeeded?), recent.count]
@@ -173,6 +183,14 @@ module TalkToYourApp
     # safe for concurrent mutation-during-iteration, and unlike @connections/
     # @enabled_plugins (populated once at boot, read-only after), operators are
     # documented to be able to re-register a check at runtime (tests, console).
+    #
+    # The .dup-then-lookup in RunCheck is a snapshot, so there's a narrow TOCTOU
+    # window: a check registered concurrently with an in-flight health.run for
+    # the same name can miss the snapshot and read as "Unknown health check".
+    # Accepted trade-off, not an oversight — checks are normally registered once
+    # at boot before traffic flows, and holding the lock across the tool call
+    # (to close the window) would be strictly worse: it would serialize every
+    # concurrent health.run behind a single mutex for the whole check duration.
     def health_checks
       @health_checks_mutex.synchronize { @health_checks.dup }
     end

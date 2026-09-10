@@ -65,6 +65,31 @@ module TalkToYourApp
           # passed as its second argument, not the built-in Timeout::Error, to
           # keep an operator's own `rescue Timeout::Error` inside a check from
           # swallowing ours).
+          #
+          # Two known limits of this timeout, neither fixable from here:
+          #
+          # 1. Timeout.timeout works by Thread#raise-ing into the block's
+          #    thread at the next point Ruby bytecode runs. A thread blocked
+          #    inside a C extension (a stuck low-level socket read in some HTTP
+          #    client, a blocking DB driver call, a stalled DNS resolution) does
+          #    not yield control back to the interpreter until the underlying
+          #    syscall returns, so HealthCheckTimeout can't fire until then —
+          #    the very "ping a third-party API" case this README leads with is
+          #    exactly the case most likely to block in native code. This is a
+          #    stdlib limitation, not a bug in this plugin: timeout: here is a
+          #    best-effort Ruby-level backstop, not a hard kill. Prefer a
+          #    library-native timeout (most HTTP clients accept one) inside the
+          #    check itself when the dependency supports it.
+          # 2. Because Thread#raise delivers wherever the check's code currently
+          #    is — including inside the operator's OWN begin/rescue — a check
+          #    written as `begin; ThirdParty.ping!; rescue StandardError; false;
+          #    end` will catch HealthCheckTimeout in its own rescue before it
+          #    reaches here, reporting an ordinary `passed: false` with no
+          #    "timed out" message rather than propagating. Being distinct from
+          #    Timeout::Error only helps against a `rescue Timeout::Error`
+          #    inside the check; it does nothing against a broad `rescue
+          #    StandardError` or bare `rescue`. Operators should avoid swallowing
+          #    StandardError inside a health check block for this reason.
           class HealthCheckTimeout < StandardError; end
 
           def log_failure(name, message)

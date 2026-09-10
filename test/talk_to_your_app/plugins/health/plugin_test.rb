@@ -149,6 +149,30 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
     assert_equal true, payload["passed"]
   end
 
+  # Documents a known limit (see RunCheck::HealthCheckTimeout's comment and the
+  # README callout): a broad rescue inside the check's own block can swallow
+  # the timeout exception before it ever reaches RunCheck, since Timeout.timeout
+  # raises wherever the block is currently executing. Not a bug to fix here —
+  # operators are told to avoid this pattern — but pinned by a test so a future
+  # change to the timeout mechanism can't silently make this worse unnoticed.
+  def test_run_broad_rescue_inside_check_swallows_the_timeout
+    TalkToYourApp.configuration.health_check(:swallows_timeout, timeout: 0.05) do
+      begin
+        sleep 1
+        true
+      rescue StandardError
+        false # operator's own catch-all -- accidentally catches HealthCheckTimeout too
+      end
+    end
+
+    response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "swallows_timeout" }, plugin_name: :health)
+    payload = JSON.parse(response.content.first[:text])
+    # Reports as an ordinary failed check, NOT a "timed out after ..." error --
+    # the operator's rescue caught HealthCheckTimeout before RunCheck could.
+    assert_equal false, payload["passed"]
+    assert_nil payload["error"]
+  end
+
   def test_run_bare_integer_is_rejected_not_coerced
     TalkToYourApp.configuration.health_check(:count_only) { 0 }
     response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "count_only" }, plugin_name: :health)

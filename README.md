@@ -336,6 +336,8 @@ A check is a block that takes no arguments and returns either a bare boolean (pa
 
 `timeout:` (seconds, default `10`) bounds how long `health.run` waits on the block. A check is arbitrary code that may call a third-party API — without a bound, a wedged dependency hangs the calling thread indefinitely, which on a multi-threaded Puma worker can starve the whole MCP endpoint. A timed-out check reports `passed: false` the same as any other failure.
 
+> ⚠️ **`timeout:` is a best-effort backstop, not a hard kill — unlike Rake's subprocess `timeout:` above.** It's implemented with Ruby's `Timeout.timeout`, which can't interrupt a thread blocked inside a C extension (a stuck socket read in an HTTP client, a blocking DB driver call, a stalled DNS lookup) — exactly the shape of a real third-party API outage. Prefer the dependency's own timeout/deadline option inside the check when it has one. Also avoid a broad `rescue StandardError` (or bare `rescue`) inside a check's body: `Timeout.timeout` raises wherever the block is currently executing, including inside the check's own rescue, so a catch-all there can silently swallow the timeout before `health.run` ever sees it.
+
 > ⚠️ **The registered block is a single `Proc` invoked concurrently** by every simultaneous `health.run` call for that name. Don't lazily assign to a closed-over local (`@client ||= build_client`) inside the block — that's a data race across concurrent requests. Build any long-lived resource once, outside the block, and reference it; fetch anything request-scoped fresh inside the block.
 
 - **`health.list`** — the names of every registered check, sorted.
