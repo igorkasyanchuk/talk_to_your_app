@@ -83,6 +83,7 @@ module TalkToYourApp
       @instructions = nil
       @connections = {}
       @enabled_plugins = {}
+      @health_checks = {}
       @logger = nil
       @api_keys = {}
       @allowed_origins = []
@@ -131,6 +132,26 @@ module TalkToYourApp
       warn("talk_to_your_app: authorizer raised: #{e.class}: #{e.message}")
       false
     end
+
+    # Registers a named health check. `block` is called with no arguments and
+    # must return either a boolean (pass/fail, no extra value) or a
+    # [passed, value] pair, where `value` is any JSON-serializable payload the
+    # check wants to surface (a count, a timestamp, a status string). Re-registering
+    # an existing name overwrites it — the last declaration in the initializer wins,
+    # matching how `connection`/`plugin` behave elsewhere in this class.
+    #
+    #   config.health_check(:video_pipeline) do
+    #     recent = VideoJob.where("created_at > ?", 15.minutes.ago)
+    #     [recent.any? && recent.all?(&:succeeded?), recent.count]
+    #   end
+    def health_check(name, &block)
+      raise ArgumentError, "health_check #{name.inspect}: a block is required" unless block
+
+      @health_checks[name.to_sym] = block
+    end
+
+    # Declared health checks, keyed by name => callable.
+    attr_reader :health_checks
 
     # Declared named connections, keyed by gem-internal symbol name.
     attr_reader :connections

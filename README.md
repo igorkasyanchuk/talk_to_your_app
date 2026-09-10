@@ -178,6 +178,7 @@ All plugins are **off by default** — enable them explicitly, and an agent can 
 | [Flipper](#flipper) | Read and toggle feature flags (global, actor, group, %) | `config.plugin :flipper, connection: :writer` |
 | [Rake](#rake-allow-listed-task-runner) | Run allow-listed rake tasks and read their output | `config.plugin :rake, connection: false, allowed: [...]` |
 | [Cache](#cache) | Clear the Rails cache | `config.plugin :cache, connection: false` |
+| [Health](#health) | List and run operator-registered health checks | `config.plugin :health, connection: false` |
 | [Custom Tools](#custom-tools) | Call tools you write yourself (writes allowed) | `config.plugin :custom_tools, connection: false` |
 
 ### DB
@@ -313,6 +314,30 @@ config.plugin :cache, connection: false
 ```
 
 - **`cache.clear`** — calls `Rails.cache.clear` and returns `{ cleared, store }`. Every cached entry is dropped and the app re-warms from cold, so scope it to trusted principals: `config.authorize { |principal, tool, _args| tool != "cache.clear" || principal == "admin" }`.
+
+### Health
+
+Exposes health checks you register in Ruby as MCP tools — the "is X actually working" questions that don't map onto a SQL query, a job queue, or a feature flag: is the third-party transcription API responding, are the last N video-generation jobs succeeding, is the payment webhook queue caught up.
+
+```ruby
+config.plugin :health, connection: false
+
+config.health_check(:video_pipeline) do
+  recent = VideoJob.where("created_at > ?", 15.minutes.ago)
+  [recent.any? && recent.all?(&:succeeded?), recent.count]
+end
+
+config.health_check(:transcription_api) do
+  Transcription::Client.ping? # a bare boolean is fine too
+end
+```
+
+A check is a block that takes no arguments and returns either a bare boolean (pass/fail, no extra value) or a `[passed, value]` pair, where `value` is any JSON-serializable payload worth surfacing alongside the result (a count, a status string, a timestamp). Re-registering a name overwrites it, so re-running the initializer in a test or console session doesn't accumulate duplicates.
+
+- **`health.list`** — the names of every registered check, sorted.
+- **`health.run`** — `name` (required, must be a registered check). Returns `{ name, passed, value }`. A check that raises is reported as `{ passed: false, value: nil, error: "<class>: <message>" }` rather than surfacing a 500 — the same posture the DB and Flipper plugins take toward backend failures.
+
+v1 is deliberately minimal: no scheduling, no aggregation across runs, no alerting, no historical storage. A check runs exactly when `health.run` is called and reports that one result. Wire it into your own scheduler/alerting if you want more.
 
 ### Custom Tools
 
