@@ -16,11 +16,6 @@ class HealthPluginIntegrationTest < TalkToYourApp::TestCase
     @driver.initialize_session
   end
 
-  def teardown
-    TalkToYourApp.configuration.instance_variable_get(:@health_checks).clear
-    super
-  end
-
   def body_of(result)
     JSON.parse(result.dig("result", "content", 0, "text"))
   end

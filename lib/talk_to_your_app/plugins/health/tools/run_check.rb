@@ -8,6 +8,16 @@ module TalkToYourApp
     module Health
       module Tools
         class RunCheck < TalkToYourApp::Tool
+          # Deliberately < Exception, not StandardError: Timeout.timeout raises
+          # wherever the block is currently executing, including inside a
+          # check's own `rescue StandardError`. A StandardError subclass here
+          # would let a broad rescue in the check's body swallow the timeout
+          # before we ever see it. Exception is what Ruby's own Timeout.timeout
+          # uses internally for the same reason, so this can't be caught by an
+          # ordinary application-level rescue. `ensure` blocks still run.
+          class HealthCheckTimeout < Exception; end
+          private_constant :HealthCheckTimeout
+
           name        "health.run"
           description "Run a named health check and return pass/fail plus its value."
           argument    :name, :string, required: true, description: "Health check name, from health.list."
@@ -18,7 +28,10 @@ module TalkToYourApp
 
             result = Timeout.timeout(check[:timeout], HealthCheckTimeout) { check[:block].call }
             normalized = normalize(args[:name], result)
-            return error(normalized) if normalized.is_a?(String)
+            if normalized.is_a?(String)
+              log_failure(args[:name], normalized)
+              return error(normalized)
+            end
 
             passed, value = normalized
             json(name: args[:name], passed: passed, value: value)
@@ -31,8 +44,6 @@ module TalkToYourApp
           end
 
           private
-
-          class HealthCheckTimeout < StandardError; end
 
           def log_failure(name, message)
             TalkToYourApp.configuration.logger&.warn("talk_to_your_app: health check #{name.inspect} failed: #{message}")

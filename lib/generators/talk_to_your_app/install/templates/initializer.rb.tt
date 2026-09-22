@@ -101,6 +101,7 @@ TalkToYourApp.configure do |config|
   # config.plugin :flipper, connection: :write      # Flipper writes flag state — requires a :writing connection
   # config.plugin :rake, connection: false, allowed: ["stats", "report:generate"]   # optional: timeout: 60 (per-task seconds, default 20)
   # config.plugin :cache, connection: false         # cache.clear (Rails.cache.clear) — destructive, scope with config.authorize
+  # config.plugin :health, connection: false        # health.list / health.run over config.health_check blocks
   # config.plugin :custom_tools, connection: false  # or connection: :read to give tools a default
   #
   # DANGER — running :db against a writable connection. Wiring a :writing

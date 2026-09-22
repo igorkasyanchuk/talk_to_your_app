@@ -3,20 +3,6 @@
 require "test_helper"
 
 class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
-  def setup
-    super
-    reset_health_checks!
-  end
-
-  def teardown
-    reset_health_checks!
-    super
-  end
-
-  def reset_health_checks!
-    TalkToYourApp.configuration.instance_variable_get(:@health_checks).clear
-  end
-
   def test_registered_under_health
     assert_equal TalkToYourApp::Plugins::Health::Plugin, TalkToYourApp::PluginRegistry[:health]
   end
@@ -139,8 +125,8 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
     assert_equal true, payload["passed"]
   end
 
-  def test_run_broad_rescue_inside_check_swallows_the_timeout
-    TalkToYourApp.configuration.health_check(:swallows_timeout, timeout: 0.05) do
+  def test_run_broad_rescue_inside_check_does_not_swallow_the_timeout
+    TalkToYourApp.configuration.health_check(:does_not_swallow_timeout, timeout: 0.05) do
       begin
         sleep 1
         true
@@ -149,10 +135,10 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
       end
     end
 
-    response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "swallows_timeout" }, plugin_name: :health)
+    response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "does_not_swallow_timeout" }, plugin_name: :health)
     payload = JSON.parse(response.content.first[:text])
     assert_equal false, payload["passed"]
-    assert_nil payload["error"]
+    assert_match(/timed out after 0\.05s/, payload["error"])
   end
 
   def test_run_bare_integer_is_rejected_not_coerced
@@ -163,7 +149,7 @@ class TalkToYourApp::Plugins::HealthTest < TalkToYourApp::TestCase
   end
 
   def test_run_nil_is_rejected_not_coerced
-    TalkToYourApp.configuration.health_check(:oops) {} # rubocop:disable Lint/EmptyBlock
+    TalkToYourApp.configuration.health_check(:oops) {}
     response = TalkToYourApp::Plugins::Health::Tools::RunCheck.dispatch({ name: "oops" }, plugin_name: :health)
     assert response.error?
     assert_match(/expected a boolean or \[passed, value\]/, response.content.first[:text])
