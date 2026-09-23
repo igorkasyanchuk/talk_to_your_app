@@ -16,6 +16,7 @@ group :development, :test do
   gem "appraisal", "~> 2.5"
   gem "debug", ">= 1.0", require: false # interactive debugger (binding.break)
   gem "puma", ">= 6.0"                   # serve the dummy app for local Claude testing
+  gem "json", "< 3"                      # json 3.0 breaks ActiveSupport encode/decode (quirks_mode, parse arity) on Rails 7.2-8.1
 
   # Default dummy-app database.
   gem "sqlite3", ">= 1.4"
