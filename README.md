@@ -84,7 +84,9 @@ RAILS_ENV=development bundle exec ruby bin/rails server -p 3000  # MCP endpoint 
 ```
 
 Then connect Claude Code with one command (Basic auth `dev` / `secret`, where
-`ZGV2OnNlY3JldA==` is `base64("dev:secret")`):
+`ZGV2OnNlY3JldA==` is `base64("dev:secret")` — see
+[LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md#computing-the-base64-value) if
+you're not sure where to run that):
 
 ```sh
 claude mcp add --transport http talk-to-your-app http://localhost:3000/mcp \
