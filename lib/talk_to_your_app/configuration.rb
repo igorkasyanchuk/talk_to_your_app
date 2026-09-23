@@ -10,6 +10,8 @@ module TalkToYourApp
   # the TalkToYourApp module, so calling `TalkToYourApp.configure` more than
   # once merges into the same instance rather than replacing it.
   class Configuration
+    DEFAULT_HEALTH_CHECK_TIMEOUT = 10
+
     # Path the MCP endpoint is mounted at in the host app's router. Default "/mcp".
     attr_accessor :mount_at
 
@@ -83,6 +85,8 @@ module TalkToYourApp
       @instructions = nil
       @connections = {}
       @enabled_plugins = {}
+      @health_checks = {}
+      @health_checks_mutex = Mutex.new
       @logger = nil
       @api_keys = {}
       @allowed_origins = []
@@ -130,6 +134,19 @@ module TalkToYourApp
       # A raising authorizer denies (fail-closed), mirroring basic_auth handling.
       warn("talk_to_your_app: authorizer raised: #{e.class}: #{e.message}")
       false
+    end
+
+    def health_check(name, timeout: DEFAULT_HEALTH_CHECK_TIMEOUT, &block)
+      raise ArgumentError, "health_check #{name.inspect}: a block is required" unless block
+      unless timeout.is_a?(Numeric) && timeout.positive?
+        raise ArgumentError, "health_check #{name.inspect}: timeout must be a positive number, got #{timeout.inspect}"
+      end
+
+      @health_checks_mutex.synchronize { @health_checks[name.to_sym] = { block: block, timeout: timeout } }
+    end
+
+    def health_checks
+      @health_checks_mutex.synchronize { @health_checks.dup }
     end
 
     # Declared named connections, keyed by gem-internal symbol name.

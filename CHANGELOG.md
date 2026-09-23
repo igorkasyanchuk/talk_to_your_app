@@ -6,6 +6,18 @@ breaking changes.
 
 ## [Unreleased]
 
+### Added
+- **New `health` plugin.** Exposes operator-registered health checks as MCP tools:
+  `health.list` (names of registered checks) and `health.run` (execute one, get
+  `{ name, passed, value }`). Register checks in the initializer with
+  `config.health_check(:name) { ... }` — the block returns a bare boolean or a
+  `[passed, value]` pair. A raising check is reported as a failed check
+  (`passed: false`, `error: "..."`) rather than a 500, matching the DB and
+  Flipper plugins' posture toward backend failures. No scheduling, aggregation,
+  or alerting in v1 — see `docs/brainstorms/talk-to-your-app-gem-v1-requirements.md`
+  (R20-R22), which specified this plugin as part of the original v1 scope but
+  was not yet implemented.
+
 ## [0.2.0] - 2026-09-02
 
 ### Changed
