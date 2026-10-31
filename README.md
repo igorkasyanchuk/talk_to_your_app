@@ -1,5 +1,12 @@
 # talk_to_your_app
 
+<a href="https://igorkasyanchuk.com/apps?ref=talk_to_your_app">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://igorkasyanchuk.com/versions/v1/banner-dark.svg">
+    <img src="https://igorkasyanchuk.com/versions/v1/banner-light.svg" width="720" alt="More tools from the author: Laki, DiffNotes and more. See all projects at igorkasyanchuk.com/apps">
+  </picture>
+</a>
+
 **Let an AI agent talk to your running Rails app — safely.** `talk_to_your_app` mounts a [Model Context Protocol](https://modelcontextprotocol.io) endpoint on your app, so a tool like Claude can query your database, inspect background jobs, flip feature flags, and call tools you write yourself — all behind your auth, all audit-logged, and read-only unless you opt into a write-capable plugin.
 
 [![20-second demo](docs/demo.gif)](docs/demo.mp4)
