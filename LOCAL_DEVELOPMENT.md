@@ -160,6 +160,31 @@ claude mcp add --transport http talk-to-your-app http://localhost:3000/mcp \
   --header "Authorization: Bearer <token-from-the-home-page>"
 ```
 
+#### Computing the base64 value
+
+If you're rolling your own header instead of copy-pasting `ZGV2OnNlY3JldA==`
+(e.g. because you changed `TTYA_DEV_USER` / `TTYA_DEV_PASSWORD`, or you're
+wiring up a different `user:pass` pair entirely), you need `base64("user:pass")`.
+Where that's confusing: Ruby doesn't have a `base64` binary, and `Base64` isn't
+autoloaded in `irb` / `rails console` — you'd need `require "base64"` first, and
+even then it's an extra hop for a one-liner. The shortest path is your shell:
+
+```sh
+# macOS / Linux, any shell with coreutils
+echo -n "user:pass" | base64
+```
+
+The `-n` matters — without it `echo` adds a trailing newline that gets encoded
+too, producing a value that looks right but fails auth. If you'd rather stay
+in Ruby (e.g. scripting the header generation):
+
+```sh
+ruby -rbase64 -e 'print Base64.strict_encode64("user:pass")'
+```
+
+`strict_encode64` (not `encode64`) avoids a trailing newline in the output for
+the same reason as `echo -n` above.
+
 Then in a Claude Code session: `/mcp` lists the server, and you can ask it to
 run a tool — e.g. *"use talk-to-your-app's db.query to count comments per user"*.
 
